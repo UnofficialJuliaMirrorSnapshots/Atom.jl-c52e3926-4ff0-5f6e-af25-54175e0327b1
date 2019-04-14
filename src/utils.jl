@@ -35,7 +35,13 @@ function finddevpackages()
     for manifest in manifests
         isfile(manifest) || continue
         for (pkg, infos) in Pkg.Types.read_manifest(manifest)
-            haskey(first(infos), "path") && (devpkgs[pkg] = first(infos)["path"])
+            @static if VERSION < v"1.1"
+                haskey(first(infos), "path") && (devpkgs[pkg] = first(infos)["path"])
+            else
+                if infos.path ≠ nothing
+                    devpkgs[infos.name] = infos.path
+                end
+            end
         end
     end
 
@@ -86,4 +92,9 @@ function md_hlines(md)
       n == length(md.content) || push!(v, HorizontalRule())
   end
   return MD(v)
+end
+
+function strlimit(str::AbstractString, limit = 30)
+  str = lastindex(str) > limit ?  str[1:prevind(str, limit)]*"…" : str
+  filter(isvalid, str)
 end
