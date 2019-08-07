@@ -25,7 +25,7 @@ function __init__()
               f = Base.find_source_file(path)
               f !== nothing && (path = f)
           end
-          $(msg)("openFile", f, line-1)
+          $(msg)("openFile", Base.abspath(path), line-1)
         end
       end)
     end
@@ -41,6 +41,7 @@ include("comm.jl")
 include("display/display.jl")
 include("progress.jl")
 include("eval.jl")
+include("datatip.jl")
 include("workspace.jl")
 include("repl.jl")
 include("docs.jl")
