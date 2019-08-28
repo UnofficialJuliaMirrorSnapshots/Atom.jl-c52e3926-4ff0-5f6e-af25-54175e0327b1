@@ -13,6 +13,17 @@ end
 function renderitem(x)
   r = Dict(f => getfield(x, f) for f in fieldnames(DocSeeker.DocObj))
   r[:html] = view(renderMD(x.html))
+
+  mod = getmodule′(x.mod)
+  name = Symbol(x.name)
+  r[:typ], r[:icon], r[:nativetype] = if name ∈ keys(Docs.keywords)
+    "keyword", "k", x.typ
+  else
+    val = getfield′′(mod, name)
+    # @NOTE: DocSeeker can show docs for non-loaded packages via `createdocsdb()`
+    nativetype = val isa Undefined ? "Undefined or not loaded yet" : x.typ
+    wstype(mod, name, val), wsicon(mod, name, val), nativetype
+  end
   r
 end
 
@@ -33,18 +44,20 @@ function packageinfo(mod)
 
   return  Hiccup.div(
             renderMD(description),
-            renderMD("### Defined symbols:")
+            renderMD("\n---\n## Defined symbols in `$(mod)`:")
           ), modulesymbols(mod)
 end
 
 function moduleinfo(mod)
   header = if mod == "Core"
     "## Julia `Core`"
+  elseif mod == "Base"
+    "## Julia `Base` Library"
   elseif first(split(mod, '.')) == "Base"
     "## Julia `Base` Library: `$(last(split(mod, '.')))`"
   else
     "## Module `$mod`"
-  end |> str -> str * "\n### Defined symbols:" |> renderMD
+  end * "\n---\n## Defined symbols:" |> renderMD
 
   header, modulesymbols(mod)
 end
@@ -54,6 +67,11 @@ function modulesymbols(mod)
   sort(syms, by = x -> x.name)[1:min(100, length(syms))]
 end
 
+using Logging: with_logger, current_logger
+using .Progress: JunoProgressLogger
+
 handle("regenerateCache") do
-  DocSeeker.createdocsdb()
+  Base.CoreLogging.with_logger(Atom.Progress.JunoProgressLogger(Base.CoreLogging.current_logger())) do
+    @errs DocSeeker.createdocsdb()
+  end
 end
