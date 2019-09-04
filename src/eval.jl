@@ -2,7 +2,7 @@ using CodeTools, LNR, Media
 using CodeTools: getthing, getmodule
 import REPL
 
-using Logging: with_logger, current_logger
+using Logging: with_logger
 using .Progress: JunoProgressLogger
 
 ends_with_semicolon(x) = REPL.ends_with_semicolon(split(x,'\n',keepempty = false)[end])
@@ -56,7 +56,7 @@ handle("evalshow") do data
 
     lock(evallock)
     result = hideprompt() do
-      Base.CoreLogging.with_logger(Atom.Progress.JunoProgressLogger(Base.CoreLogging.current_logger())) do
+      with_logger(JunoProgressLogger()) do
         withpath(path) do
           try
             res = include_string(mod, text, path, line)
@@ -89,7 +89,7 @@ handle("eval") do data
 
     lock(evallock)
     result = hideprompt() do
-      Base.CoreLogging.with_logger(Atom.Progress.JunoProgressLogger(Base.CoreLogging.current_logger())) do
+      with_logger(JunoProgressLogger()) do
         withpath(path) do
           @errs include_string(mod, text, path, line)
         end
@@ -118,7 +118,7 @@ handle("evalall") do data
 
     lock(evallock)
     hideprompt() do
-      Base.CoreLogging.with_logger(Atom.Progress.JunoProgressLogger(Base.CoreLogging.current_logger())) do
+      with_logger(JunoProgressLogger()) do
         withpath(path) do
           result = nothing
           try
@@ -197,16 +197,6 @@ handle("docs") do data
        :contents =>  map(x -> render(Inline(), x), [docstring; mtable]))
 end
 
-handle("methods") do data
-  @destruct [mod || "Main", word] = data
-  mtable = @errs getmethods(mod, word)
-  if mtable isa EvalError
-    Dict(:error => true, :items => sprint(showerror, mtable.err))
-  else
-    Dict(:items => [gotoitem(m) for m in mtable])
-  end
-end
-
 function getmethods(mod, word)
   methods(CodeTools.getthing(getmodule′(mod), word))
 end
@@ -218,6 +208,16 @@ function getdocs(mod, word)
     include_string(getmodule′(mod), "@doc $word")
   end
   return md_hlines(md)
+end
+
+handle("methods") do data
+  @destruct [mod || "Main", word] = data
+  mtable = @errs getmethods(mod, word)
+  if mtable isa EvalError
+    Dict(:error => true, :items => sprint(showerror, mtable.err))
+  else
+    Dict(:error => false, :items => [gotoitem(m) for m in mtable])
+  end
 end
 
 function gotoitem(m::Method)

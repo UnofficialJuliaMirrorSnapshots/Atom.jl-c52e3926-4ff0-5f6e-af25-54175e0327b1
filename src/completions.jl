@@ -1,9 +1,16 @@
 handle("completions") do data
-  @destruct [path || nothing, mod || "Main", line, force] = data
+  @destruct [path || nothing,
+             mod || "Main",
+             editorContent || "",
+             lineNumber || 1,
+             startLine || 0,
+             column || 1,
+             line, force] = data
+
   withpath(path) do
     m = getmodule′(mod)
 
-    cs, pre = basecompletionadapter(line, m, force)
+    cs, pre = basecompletionadapter(line, m, force, lineNumber - startLine, column, editorContent)
 
     d(:completions => cs,
       :prefix      => string(pre))
@@ -12,7 +19,7 @@ end
 
 using REPL.REPLCompletions
 
-function basecompletionadapter(line, mod, force)
+function basecompletionadapter(line, mod, force, lineNumber, column, text)
   comps, replace, shouldcomplete = try
     completions(line, lastindex(line), mod)
   catch err
@@ -31,8 +38,6 @@ function basecompletionadapter(line, mod, force)
   pre = line[replace]
   d = []
   for c in comps
-    # TODO: get local completions from CSTParser or similar
-    # TODO: would be cool to provide `descriptionMoreURL` here to open the docpane
     if REPLCompletions.afterusing(line, first(replace))
       c isa REPLCompletions.PackageCompletion || continue
     end
@@ -42,25 +47,40 @@ function basecompletionadapter(line, mod, force)
       continue
     end
   end
+
+  # completions from the local code block:
+  for c in reverse!(locals(text, lineNumber, column))
+    if (force || !isempty(pre)) && startswith(c[1], pre)
+      pushfirst!(d, Dict(
+                  :type        => "attribute",
+                  :icon        => "icon-chevron-right",
+                  :rightLabel  => c[2],
+                  :leftLabel   => "",
+                  :text        => c[1],
+                  :description => ""
+                ))
+    end
+  end
   d, pre
 end
 
 const MAX_COMPLETIONS = 500
 
 function completion(mod, line, c)
-  return Dict(:type        => completiontype(line, c, mod),
-              :icon        => completionicon(c),
-              :rightLabel  => completionmodule(mod, c),
-              :leftLabel   => returntype(mod, line, c),
-              :text        => completiontext(c),
-              :description => completionsummary(mod, c))
+  return Dict(:type               => completiontype(line, c, mod),
+              :icon               => completionicon(c),
+              :rightLabel         => completionmodule(mod, c),
+              :leftLabel          => returntype(mod, line, c),
+              :text               => completiontext(c),
+              :description        => completionsummary(mod, c),
+              :descriptionMoreURL => completionurl(mod, c))
 end
 
-completiontext(x) = completion_text(x)
-completiontext(x::REPLCompletions.PathCompletion) = rstrip(completion_text(x), '"')
-completiontext(x::REPLCompletions.DictCompletion) = rstrip(completion_text(x), [']', '"'])
-completiontext(x::REPLCompletions.MethodCompletion) = begin
-  ct = completion_text(x)
+completiontext(c) = completion_text(c)
+completiontext(c::REPLCompletions.PathCompletion) = rstrip(completion_text(c), '"')
+completiontext(c::REPLCompletions.DictCompletion) = rstrip(completion_text(c), [']', '"'])
+completiontext(c::REPLCompletions.MethodCompletion) = begin
+  ct = completion_text(c)
   ct = match(r"^(.*) in .*$", ct)
   ct isa Nothing ? ct : ct[1]
 end
@@ -88,19 +108,19 @@ returntype(mod, line, c::REPLCompletions.PropertyCompletion) = begin
   typ = string(typeof(prop))
   strlimit(typ, 20)
 end
+returntype(mod, line, c::REPLCompletions.FieldCompletion) = begin
+  typ = string(fieldtype(c.typ, c.field))
+  strlimit(typ, 20)
+end
 returntype(mod, line, ::REPLCompletions.PathCompletion) = "Path"
 
 using Base.Docs
 
-completionsummary(mod, c) = begin
-  ct = Symbol(completion_text(c))
-  !cangetdocs(mod, ct) && return ""
-  b = Docs.Binding(mod, ct)
-  description(b)
-end
+completionsummary(mod, c) = "" # fallback
 completionsummary(mod, c::REPLCompletions.ModuleCompletion) = begin
   mod = c.parent
   word = c.mod
+
   !cangetdocs(mod, Symbol(word)) && return ""
   getdocs(string(mod), word) |> makedescription
 end
@@ -141,13 +161,31 @@ function makedescription(docs)
   end
 end
 
+completionurl(mod, c) = ""
+completionurl(mod, c::REPLCompletions.PackageCompletion) =
+  "atom://julia-client/?moduleinfo=true&mod=$(c.package)"
+completionurl(mod, c::REPLCompletions.ModuleCompletion) = begin
+  val = getfield′′(c.parent, Symbol(c.mod))
+  if val isa Module # module info
+    parentmodule(val) == val || val ∈ (Main, Base, Core) ?
+      "atom://julia-client/?moduleinfo=true&mod=$(c.mod)" :
+      "atom://julia-client/?moduleinfo=true&mod=$(c.parent).$(c.mod)"
+  else
+    "atom://julia-client/?docs=true&mod=$(mod)&word=$(completion_text(c))"
+  end
+end
+completionurl(mod, c::REPLCompletions.MethodCompletion) =
+  "atom://julia-client/?docs=true&mod=$(c.method.module)&word=$(c.method.name)"
+completionurl(mod, c::REPLCompletions.KeywordCompletion) =
+  "atom://julia-client/?docs=true&mod=Main&word=$(completion_text(c))"
+
 completionmodule(mod, c) = string(mod)
 completionmodule(mod, c::REPLCompletions.ModuleCompletion) = string(c.parent)
 completionmodule(mod, c::REPLCompletions.MethodCompletion) = string(c.method.module)
-completionmodule(mod, ::REPLCompletions.KeywordCompletion) = "Base"
+completionmodule(mod, ::REPLCompletions.KeywordCompletion) = ""
 completionmodule(mod, ::REPLCompletions.PathCompletion) = ""
 
-completiontype(line, c, mod) = begin
+completiontype(line, c::REPLCompletions.Completion, mod) = begin # entry method
   ct = completion_text(c)
   ismacro(ct) && return "snippet"
   startswith(ct, ':') && return "tag"
@@ -164,16 +202,18 @@ completiontype(line, c, mod) = begin
     end
     return found ? completiontype(val, mod, ct) : "ignored"
   end
-  c isa REPLCompletions.KeywordCompletion ? "keyword" :
-    c isa REPLCompletions.PathCompletion ? "path" :
-    c isa REPLCompletions.PackageCompletion ? "import" :
-    c isa REPLCompletions.PropertyCompletion ? "property" :
-    c isa REPLCompletions.FieldCompletion ? "attribute" :
-    c isa REPLCompletions.MethodCompletion ? "method" :
-    "variable"
+  completiontype(c)
 end
-completiontype(val, mod::Module, ct::AbstractString) = wstype(mod, Symbol(ct), val)
-completiontype(line, ::REPLCompletions.DictCompletion, mod) = "key" # fallen into "macro" otherwise
+
+completiontype(line, ::REPLCompletions.DictCompletion, mod) = "key" # DictCompletion isn't dispatched for the entry method, otherwise fallen into "macro"
+completiontype(@nospecialize(val), mod::Module, ct::String) = wstype(mod, Symbol(ct), val) # ModuleCompletion
+completiontype(::REPLCompletions.Completion) = "variable" # may not happen
+completiontype(::REPLCompletions.PackageCompletion) = "import"
+completiontype(::REPLCompletions.MethodCompletion) = "method"
+completiontype(::REPLCompletions.PropertyCompletion) = "property"
+completiontype(::REPLCompletions.FieldCompletion) = "property"
+completiontype(::REPLCompletions.KeywordCompletion) = "keyword"
+completiontype(::REPLCompletions.PathCompletion) = "path"
 
 ismacro(ct::AbstractString) = startswith(ct, '@') || endswith(ct, '"')
 
