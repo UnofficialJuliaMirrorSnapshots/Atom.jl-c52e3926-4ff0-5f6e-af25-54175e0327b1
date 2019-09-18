@@ -69,4 +69,33 @@ end
             )
         ]
     end
+    # kwargs shouldn't show up in outline, same as anon function args
+    let str = """
+        function bar(foo = 3)
+            2x
+        end
+        const foo = (a,b) -> a+b
+        const bar = (asd=3, bsd=4)
+        """
+        @test Atom.outline(str) == Any[
+            Dict(
+                :type => "function",
+                :name => "bar(foo=3)",
+                :icon => "λ",
+                :lines => [1, 3]
+            ),
+            Dict(
+                :type => "variable",
+                :name => "foo",
+                :icon => "v",
+                :lines => [4, 4]
+            ),
+            Dict(
+                :type => "variable",
+                :name => "bar",
+                :icon => "v",
+                :lines => [5, 5]
+            ),
+        ]
+    end
 end

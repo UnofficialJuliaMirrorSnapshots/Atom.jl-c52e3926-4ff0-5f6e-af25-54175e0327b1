@@ -8,12 +8,12 @@ handle("completions") do data
              line, force] = data
 
   withpath(path) do
-    m = getmodule′(mod)
+    m = getmodule(mod)
 
     cs, pre = basecompletionadapter(line, m, force, lineNumber - startLine, column, editorContent)
 
-    d(:completions => cs,
-      :prefix      => string(pre))
+    Dict(:completions => cs,
+         :prefix      => string(pre))
   end
 end
 
@@ -27,9 +27,10 @@ function basecompletionadapter(line, mod, force, lineNumber, column, text)
     [], 1:0, false
   end
 
-  # suppress completions if there are too many of them unless activated manually
-  # checking if `line` is a valid text to be completed in atom-julia-client beforehand would be better
-  (!force && length(comps) > MAX_COMPLETIONS) && begin
+  # Suppress completions if there are too many of them unless activated manually
+  # @TODO: Checking whether `line` is a valid text to be completed in atom-julia-client
+  #        in advance and drop this check
+  if !force && length(comps) > MAX_COMPLETIONS
     comps = []
     replace = 1:0
   end
@@ -123,7 +124,7 @@ completionsummary(mod, c::REPLCompletions.ModuleCompletion) = begin
   word = c.mod
 
   !cangetdocs(mod, Symbol(word)) && return ""
-  getdocs(string(mod), word) |> makedescription
+  getdocs(mod, word) |> makedescription
 end
 completionsummary(mod, c::REPLCompletions.MethodCompletion) = begin
   ct = Symbol(c.func)
@@ -132,7 +133,7 @@ completionsummary(mod, c::REPLCompletions.MethodCompletion) = begin
   description(b, Base.tuple_type_tail(c.method.sig))
 end
 completionsummary(mod, c::REPLCompletions.KeywordCompletion) = begin
-  getdocs(string(mod), c.keyword) |> makedescription
+  getdocs(mod, c.keyword) |> makedescription
 end
 
 function cangetdocs(m, s)
@@ -168,7 +169,7 @@ completionurl(c::REPLCompletions.PackageCompletion) =
   "atom://julia-client/?moduleinfo=true&mod=$(c.package)"
 completionurl(c::REPLCompletions.ModuleCompletion) = begin
   mod, name = c.parent, c.mod
-  val = getfield′′(mod, Symbol(name))
+  val = getfield′(mod, name)
   if val isa Module # module info
     parentmodule(val) == val || val ∈ (Main, Base, Core) ?
       "atom://julia-client/?moduleinfo=true&mod=$(name)" :
@@ -226,7 +227,7 @@ completionicon(c::REPLCompletions.ModuleCompletion) = begin
   ismacro(c.mod) && return "icon-mention"
   mod = c.parent
   name = Symbol(c.mod)
-  val = getfield′′(mod, name)
+  val = getfield′(mod, name)
   wsicon(mod, name, val)
 end
 completionicon(::REPLCompletions.PathCompletion) = "icon-file"

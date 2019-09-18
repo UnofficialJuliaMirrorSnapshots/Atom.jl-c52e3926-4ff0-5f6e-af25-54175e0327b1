@@ -38,11 +38,12 @@ function __init__()
 end
 
 include("comm.jl")
+include("utils.jl")
 include("display/display.jl")
 include("progress.jl")
 include("eval.jl")
-include("datatip.jl")
 include("workspace.jl")
+include("datatip.jl")
 include("repl.jl")
 include("docs.jl")
 include("outline.jl")
@@ -50,7 +51,6 @@ include("completions.jl")
 include("misc.jl")
 include("formatter.jl")
 include("frontend.jl")
-include("utils.jl")
 
 include("debugger/debugger.jl")
 

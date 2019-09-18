@@ -1,5 +1,4 @@
 using CodeTools, LNR, Media
-using CodeTools: getthing, getmodule
 import REPL
 
 using Logging: with_logger
@@ -20,16 +19,11 @@ function modulenames(data, pos)
   main, sub
 end
 
-function getmodule′(args...)
-  m = getmodule(args...)
-  return m == nothing ? Main : m
-end
-
 handle("module") do data
   main, sub = modulenames(data, cursor(data))
 
-  mod = getmodule(main)
-  smod = getmodule(mod, sub)
+  mod = CodeTools.getmodule(main)
+  smod = CodeTools.getmodule(mod, sub)
 
   return d(:main => main,
            :sub  => sub,
@@ -52,7 +46,7 @@ handle("evalshow") do data
   fixjunodisplays()
   @dynamic let Media.input = Editor()
     @destruct [text, line, path, mod] = data
-    mod = getmodule′(mod)
+    mod = getmodule(mod)
 
     lock(evallock)
     result = hideprompt() do
@@ -85,7 +79,7 @@ handle("eval") do data
   fixjunodisplays()
   @dynamic let Media.input = Editor()
     @destruct [text, line, path, mod, displaymode || "editor"] = data
-    mod = getmodule′(mod)
+    mod = getmodule(mod)
 
     lock(evallock)
     result = hideprompt() do
@@ -109,9 +103,9 @@ handle("evalall") do data
   @dynamic let Media.input = Editor()
     @destruct [setmod = :module || nothing, path || "untitled", code] = data
     mod = if setmod ≠ nothing
-       getmodule′(setmod)
+       getmodule(setmod)
     elseif isabspath(path)
-      getmodule′(CodeTools.filemodule(path))
+      getmodule(CodeTools.filemodule(path))
     else
       Main
     end
@@ -149,37 +143,6 @@ handle("evalall") do data
   return
 end
 
-
-handle("evalrepl") do data
-  fixjunodisplays()
-  @dynamic let Media.input = Console()
-    @destruct [mode || nothing, code, mod || "Main"] = data
-    if mode == "shell"
-      code = "Base.repl_cmd(`$code`, STDOUT)"
-    elseif mode == "help"
-      render′(@errs getdocs(mod, code))
-      return
-    end
-    mod = getmodule′(mod)
-    if isdebugging()
-      render(Console(), @errs Debugger.interpret(code))
-    else
-      try
-        lock(evallock)
-        withpath(nothing) do
-          result = @errs Core.eval(mod, :(ans = include_string($mod, $code, "console")))
-          !isa(result,EvalError) && ends_with_semicolon(code) && (result = nothing)
-          Base.invokelatest(render′, result)
-        end
-        unlock(evallock)
-      catch e
-        showerror(stderr, e, catch_stacktrace())
-      end
-    end
-  end
-  return
-end
-
 handle("docs") do data
   @destruct [mod || "Main", word] = data
   docstring = @errs getdocs(mod, word)
@@ -197,26 +160,15 @@ handle("docs") do data
        :contents =>  map(x -> render(Inline(), x), [docstring; mtable]))
 end
 
-function getmethods(mod, word)
-  methods(CodeTools.getthing(getmodule′(mod), word))
-end
-
-function getdocs(mod, word)
-  md = if Symbol(word) in keys(Docs.keywords)
-    Core.eval(Main, :(@doc($(Symbol(word)))))
-  else
-    include_string(getmodule′(mod), "@doc $word")
-  end
-  return md_hlines(md)
-end
-
 handle("methods") do data
   @destruct [mod || "Main", word] = data
   mtable = @errs getmethods(mod, word)
   if mtable isa EvalError
     Dict(:error => true, :items => sprint(showerror, mtable.err))
   else
-    Dict(:error => false, :items => [gotoitem(m) for m in mtable])
+    # only show the method with full default arguments
+    aggregated = @>> mtable collect sort(by = m -> m.nargs, rev = true) unique(m -> (m.file, m.line))
+    Dict(:error => false, :items => [gotoitem(m) for m in aggregated])
   end
 end
 

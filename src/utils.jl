@@ -99,7 +99,59 @@ function md_hlines(md)
   return MD(v)
 end
 
-function strlimit(str::AbstractString, limit = 30)
-  str = lastindex(str) > limit ?  str[1:prevind(str, limit)]*"…" : str
-  filter(isvalid, str)
+function strlimit(str::AbstractString, limit::Int = 30, ellipsis::AbstractString = "…")
+  will_append = length(str) > limit
+
+  io = IOBuffer()
+  i = 1
+  for c in str
+    will_append && i > limit - length(ellipsis) && break
+    isvalid(c) || continue
+
+    print(io, c)
+    i += 1
+  end
+  will_append && print(io, ellipsis)
+
+  return String(take!(io))
 end
+
+# singleton type for undefined values
+struct Undefined end
+
+# get utilities
+using CodeTools
+
+"""
+    getfield′(mod::Module, name::String, default = Undefined())
+    getfield′(mod::Module, name::Symbol, default = Undefined())
+    getfield′(object, name::Symbol, default = Undefined())
+
+Returns the specified field of a given `Module` or some arbitrary `object`,
+or `default` if no such a field is found.
+"""
+getfield′(mod::Module, name::String, default = Undefined()) = CodeTools.getthing(mod, name, default)
+getfield′(mod::Module, name::Symbol, default = Undefined()) = getfield′(mod, string(name), default)
+getfield′(@nospecialize(object), name::Symbol, default = Undefined()) = isdefined(object, name) ? getfield(object, name) : default
+
+"""
+    getmodule(mod::String)
+    getmodule(parent::Union{Nothing, Module}, mod::String)
+    getmodule(code::AbstractString, pos; filemod)
+
+Calls `CodeTools.getmodule(args...)`, but returns `Main` instead of `nothing` in a fallback case.
+"""
+getmodule(args...) = (m = CodeTools.getmodule(args...)) === nothing ? Main : m
+
+getmethods(mod::Module, word::String) = methods(CodeTools.getthing(mod, word))
+getmethods(mod::String, word::String) = getmethods(getmodule(mod), word)
+
+getdocs(mod::Module, word::String) = begin
+  md = if Symbol(word) in keys(Docs.keywords)
+    Core.eval(Main, :(@doc($(Symbol(word)))))
+  else
+    include_string(mod, "@doc $word")
+  end
+  md_hlines(md)
+end
+getdocs(mod::String, word::String) = getdocs(getmodule(mod), word)
