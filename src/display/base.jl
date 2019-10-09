@@ -86,7 +86,7 @@ end
 
 @render Inline x::Module span(".syntax--keyword.syntax--other", string(x))
 
-@render Inline x::Symbol span(".syntax--constant.syntax--other.syntax--symbol", ":$x")
+@render Inline x::Symbol span(".syntax--constant.syntax--other.syntax--symbol", repr(x))
 
 @render Inline x::Char span(".syntax--string.syntax--quoted.syntax--single", escape_string("'$x'"))
 
@@ -98,7 +98,7 @@ end
 
 import Base.Docs: doc
 
-isanon(f) = occursin("#", string(f))
+isanon(f) = startswith(string(typeof(f).name.mt.name), "#")
 
 @render Inline f::Function begin
   isanon(f) ? span(".syntax--support.syntax--function", "λ") :
@@ -107,16 +107,23 @@ isanon(f) = occursin("#", string(f))
 end
 
 # TODO: lazy load a recursive tree
-trim(xs, len = 25) =
-  length(xs) ≤ 25 ? undefs(xs) :
-                    [undefs(xs[1:10]); fade("..."); undefs(xs[end-9:end])]
+function trim(xs, len = 25)
+  if length(xs) ≤ len
+    undefs(xs)
+  else
+    [undefs(xs[1:(len÷2 - iseven(len))]); fade("..."); undefs(xs[end-(len÷2 - 1):end])]
+  end
+end
+
+pluralize(n::Int, one, more=one) = string(n, " ", n == 1 ? one : more)
+pluralize(xs, one, more=one) = pluralize(length(xs), one, more)
 
 @render i::Inline xs::Vector begin
-    LazyTree(span(c(render(i, typeof(xs)), Atom.fade(" with $(length(xs)) elements"))), () -> trim(xs))
+    LazyTree(span(c(render(i, typeof(xs)), Atom.fade(" with $(pluralize(xs, "element", "elements"))"))), () -> trim(xs))
 end
 
 @render i::Inline xs::Set begin
-    LazyTree(span(c(render(i, typeof(xs)), Atom.fade(" with $(length(xs)) elements"))), () -> trim(collect(xs)))
+    LazyTree(span(c(render(i, typeof(xs)), Atom.fade(" with $(pluralize(xs, "element", "elements"))"))), () -> trim(collect(xs)))
 end
 
 @render Inline xs::AbstractArray begin
@@ -135,7 +142,7 @@ end
     return st
   end
   LazyTree(span(c(typ(string(nameof(typeof(d)),
-            "{$(eltype(d).parameters[1]), $(eltype(d).parameters[2])}")), Atom.fade(" with $(length(d)) entries"))), cs)
+            "{$(eltype(d).parameters[1]), $(eltype(d).parameters[2])}")), Atom.fade(" with $(pluralize(d, "entry", "entries"))"))), cs)
 end
 
 @render Inline x::Number span(".syntax--constant.syntax--numeric", sprint(show, x))

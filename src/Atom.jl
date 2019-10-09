@@ -2,7 +2,7 @@ __precompile__()
 
 module Atom
 
-using Juno, Lazy, JSON, MacroTools, Reexport, Media, Base.StackTraces
+using Juno, Lazy, JSON, MacroTools, Media, Base.StackTraces
 
 using InteractiveUtils
 import Requires
@@ -45,11 +45,12 @@ include("display/display.jl")
 include("progress.jl")
 include("eval.jl")
 include("workspace.jl")
-include("datatip.jl")
 include("repl.jl")
 include("docs.jl")
 include("outline.jl")
 include("completions.jl")
+include("goto.jl")
+include("datatip.jl")
 include("misc.jl")
 include("formatter.jl")
 include("frontend.jl")

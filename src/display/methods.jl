@@ -2,18 +2,6 @@ import Base: MethodList
 
 stripparams(t) = replace(t, r"\{([A-Za-z, ]*?)\}" => "")
 
-function methodarray(mt::MethodList)
-  defs = collect(mt)
-  file(m) = m.file |> string |> basename
-  line(m) = m.line
-  sort!(defs, lt = (a, b) -> file(a) == file(b) ?
-                               line(a) < line(b) :
-                               file(a) < file(b))
-  return defs
-end
-
-methodarray(x) = methodarray(methods(x))
-
 interpose(xs, y) = map(i -> iseven(i) ? xs[i÷2] : y, 2:2length(xs))
 
 function view(m::Method)
@@ -32,7 +20,7 @@ end
 
 # TODO: factor out table view
 @render i::Inline m::MethodList begin
-  ms = methodarray(m)
+  ms = collect(m)
   isempty(ms) && return "$(m.mt.name) has no methods."
   r(x) = render(i, x)
   length(ms) == 1 && return r(ms[1])
