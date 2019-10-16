@@ -112,6 +112,11 @@ handle("eval") do data
   end
 end
 
+# dummy handler for Revise compat
+handle("evalrepl") do data
+  @warn "Juno's evalrepl handler is deprecated."
+end
+
 handle("evalall") do data
   fixjunodisplays()
   @dynamic let Media.input = Editor()
@@ -132,7 +137,7 @@ handle("evalall") do data
           try
             result = include_string(mod, code, path)
           catch err
-            ee = EvalError(err, st)
+            ee = EvalError(err, stacktrace(catch_backtrace()))
 
             # show error in REPL:
             Base.showerror(IOContext(stderr, :limit => true), ee)
