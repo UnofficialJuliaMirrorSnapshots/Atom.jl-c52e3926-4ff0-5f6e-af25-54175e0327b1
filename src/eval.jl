@@ -63,7 +63,7 @@ handle("evalshow") do data
 
           if res isa EvalError
               Base.showerror(IOContext(stderr, :limit => true), res)
-          elseif res ≠ nothing && !ends_with_semicolon(text)
+          elseif res !== nothing && !ends_with_semicolon(text)
             display(res)
           end
         end
@@ -74,7 +74,7 @@ handle("evalshow") do data
     Base.invokelatest() do
       display = Media.getdisplay(typeof(result), Media.pool(Editor()), default = Editor())
       !isa(result, EvalError) && ends_with_semicolon(text) && (result = nothing)
-      display ≠ Editor() && result ≠ nothing && @ierrs render(display, result)
+      display ≠ Editor() && result !== nothing && @ierrs render(display, result)
     end
 
     nothing
@@ -121,7 +121,7 @@ handle("evalall") do data
   fixjunodisplays()
   @dynamic let Media.input = Editor()
     @destruct [setmod = :module || nothing, path || "untitled", code] = data
-    mod = if setmod ≠ nothing
+    mod = if setmod !== nothing
        getmodule(setmod)
     elseif isabspath(path)
       getmodule(CodeTools.filemodule(path))
@@ -159,8 +159,14 @@ handle("evalall") do data
 end
 
 handle("docs") do data
-  @destruct [mod || "Main", word] = data
+  @destruct [
+    word,
+    mod || "Main"
+  ] = data
+  docs(word, mod)
+end
 
+function docs(word, mod = "Main")
   docstring = @errs getdocs(mod, word)
   docstring isa EvalError && return Dict(:error => true)
 
